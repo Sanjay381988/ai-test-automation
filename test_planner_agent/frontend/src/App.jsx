@@ -1,7 +1,23 @@
 import { useState, useEffect } from 'react'
 import './App.css'
 
-const API_BASE = import.meta.env.VITE_API_URL || (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' ? 'http://127.0.0.1:8000' : '');
+const API_BASE = import.meta.env.VITE_API_URL ?? '';
+
+// Safe helpers — prevent React crash when LLM returns objects instead of strings
+const safeStr = (val) => {
+  if (val === null || val === undefined) return '';
+  if (typeof val === 'string') return val;
+  if (Array.isArray(val)) return val.map(safeStr).join(' ');
+  if (typeof val === 'object') return val.scenario || val.name || val.description || val.title || val.text || JSON.stringify(val);
+  return String(val);
+};
+const safeList = (val) => {
+  if (!val) return [];
+  if (Array.isArray(val)) return val.map(item => safeStr(item));
+  if (typeof val === 'string') return val.split('\n').filter(s => s.trim());
+  if (typeof val === 'object') return Object.values(val).map(v => safeStr(v));
+  return [String(val)];
+};
 
 function App() {
   const [theme, setTheme] = useState('dark');
@@ -251,27 +267,27 @@ function App() {
         </div>
 
         <nav className="steps-nav">
-          <div className={`step-item ${currentStep === 1 && !showHistory ? 'active' : ''} ${currentStep > 1 ? 'completed' : ''}`} onClick={() => { setShowHistory(false); setCurrentStep(1); }}>
+          <div className={`step-item ${currentStep === 1 && !showHistory ? 'active' : ''} ${llmStatus === 'success' ? 'completed' : ''}`} onClick={() => { setShowHistory(false); setCurrentStep(1); }}>
             <div className="step-indicator">1</div>
             <div className="step-details">
               <span className="step-title">LLM Engine</span>
-              <span className="step-status">{currentStep > 1 ? 'Connected' : 'Pending Setup'}</span>
+              <span className="step-status">{llmStatus === 'success' ? 'Connected ✓' : llmStatus === 'error' ? 'Failed ✗' : 'Pending Setup'}</span>
             </div>
           </div>
 
-          <div className={`step-item ${currentStep === 2 && !showHistory ? 'active' : ''} ${currentStep > 2 ? 'completed' : ''}`} onClick={() => { setShowHistory(false); setCurrentStep(2); }}>
+          <div className={`step-item ${currentStep === 2 && !showHistory ? 'active' : ''} ${almStatus === 'success' ? 'completed' : ''}`} onClick={() => { setShowHistory(false); setCurrentStep(2); }}>
             <div className="step-indicator">2</div>
             <div className="step-details">
               <span className="step-title">Jira (ALM) Server</span>
-              <span className="step-status">{currentStep > 2 ? 'Connected' : 'Pending Auth'}</span>
+              <span className="step-status">{almStatus === 'success' ? 'Connected ✓' : almStatus === 'error' ? 'Failed ✗' : 'Pending Auth'}</span>
             </div>
           </div>
 
-          <div className={`step-item ${currentStep === 3 && !showHistory ? 'active' : ''} ${currentStep > 3 ? 'completed' : ''}`} onClick={() => { setShowHistory(false); setCurrentStep(3); }}>
+          <div className={`step-item ${currentStep === 3 && !showHistory ? 'active' : ''} ${ticketId ? 'completed' : ''}`} onClick={() => { setShowHistory(false); setCurrentStep(3); }}>
             <div className="step-indicator">3</div>
             <div className="step-details">
               <span className="step-title">Story Context</span>
-              <span className="step-status">{currentStep > 3 ? 'Configured' : 'Define Scope'}</span>
+              <span className="step-status">{ticketId ? `Ticket: ${ticketId} ✓` : 'Define Scope'}</span>
             </div>
           </div>
 
@@ -458,6 +474,24 @@ function App() {
           <div className="step-container slide-in">
             <h2>Dashboard: Test Execution</h2>
             <p className="subtitle">Realtime AI generation tracking.</p>
+
+            {/* Always-visible quick-status bar */}
+            <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap', marginBottom: '1.5rem', maxWidth: '800px' }}>
+              <div style={{ flex: 1, minWidth: '140px', padding: '0.75rem 1rem', borderRadius: '0.6rem', background: llmStatus === 'success' ? 'rgba(16,185,129,0.12)' : 'rgba(239,68,68,0.08)', border: `1px solid ${llmStatus === 'success' ? '#10b981' : '#ef4444'}`, fontSize: '0.85rem', fontWeight: 600, color: llmStatus === 'success' ? '#10b981' : '#ef4444', textAlign: 'center' }}>
+                {llmStatus === 'success' ? '✅ LLM Ready' : '⚠️ LLM Not Set'}
+              </div>
+              <div style={{ flex: 1, minWidth: '140px', padding: '0.75rem 1rem', borderRadius: '0.6rem', background: almStatus === 'success' ? 'rgba(16,185,129,0.12)' : 'rgba(239,68,68,0.08)', border: `1px solid ${almStatus === 'success' ? '#10b981' : '#ef4444'}`, fontSize: '0.85rem', fontWeight: 600, color: almStatus === 'success' ? '#10b981' : '#ef4444', textAlign: 'center' }}>
+                {almStatus === 'success' ? '✅ Jira Ready' : '⚠️ Jira Not Set'}
+              </div>
+              <div style={{ flex: 1, minWidth: '140px', padding: '0.75rem 1rem', borderRadius: '0.6rem', background: ticketId ? 'rgba(16,185,129,0.12)' : 'rgba(239,68,68,0.08)', border: `1px solid ${ticketId ? '#10b981' : '#ef4444'}`, fontSize: '0.85rem', fontWeight: 600, color: ticketId ? '#10b981' : '#ef4444', textAlign: 'center' }}>
+                {ticketId ? `✅ Ticket: ${ticketId}` : '⚠️ No Ticket'}
+              </div>
+              {llmStatus === 'success' && almStatus === 'success' && ticketId && genStatus !== 'generating' && genStatus !== 'success' && (
+                <button className="btn primary" style={{ flex: 1, minWidth: '160px' }} onClick={generatePlan}>
+                  🚀 Generate Now
+                </button>
+              )}
+            </div>
             
             <div className="form-card dashboard-card">
               {genStatus === 'generating' && (
@@ -491,35 +525,33 @@ function App() {
                       {finalData.objective && (
                         <div style={{ marginBottom: '1rem', padding: '1rem', background: 'rgba(59,130,246,0.08)', borderLeft: '3px solid #3b82f6', borderRadius: '0 0.5rem 0.5rem 0' }}>
                           <strong style={{ color: '#60a5fa', fontSize: '0.8rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>🎯 Objective</strong>
-                          <p style={{ margin: '0.5rem 0 0', color: 'var(--text-main)', lineHeight: 1.6 }}>{finalData.objective}</p>
+                          <p style={{ margin: '0.5rem 0 0', color: 'var(--text-main)', lineHeight: 1.6 }}>{safeStr(finalData.objective)}</p>
                         </div>
                       )}
                       {finalData.scope && (
                         <div style={{ marginBottom: '1rem', padding: '1rem', background: 'rgba(16,185,129,0.08)', borderLeft: '3px solid #10b981', borderRadius: '0 0.5rem 0.5rem 0' }}>
                           <strong style={{ color: '#10b981', fontSize: '0.8rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>📋 Scope</strong>
-                          <p style={{ margin: '0.5rem 0 0', color: 'var(--text-main)', lineHeight: 1.6 }}>{finalData.scope}</p>
+                          <p style={{ margin: '0.5rem 0 0', color: 'var(--text-main)', lineHeight: 1.6 }}>{safeStr(finalData.scope)}</p>
                         </div>
                       )}
                       {finalData.test_scenarios && (
                         <div style={{ marginBottom: '1rem', padding: '1rem', background: 'rgba(245,158,11,0.08)', borderLeft: '3px solid #f59e0b', borderRadius: '0 0.5rem 0.5rem 0' }}>
                           <strong style={{ color: '#f59e0b', fontSize: '0.8rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>🧪 Test Scenarios</strong>
                           <ul style={{ margin: '0.5rem 0 0', paddingLeft: '1.25rem', color: 'var(--text-main)', lineHeight: 1.8 }}>
-                            {Array.isArray(finalData.test_scenarios)
-                              ? finalData.test_scenarios.map((s, i) => <li key={i}>{s}</li>)
-                              : <li>{finalData.test_scenarios}</li>}
+                            {safeList(finalData.test_scenarios).map((s, i) => <li key={i}>{s}</li>)}
                           </ul>
                         </div>
                       )}
                       {finalData.risks && (
                         <div style={{ marginBottom: '1rem', padding: '1rem', background: 'rgba(239,68,68,0.08)', borderLeft: '3px solid #ef4444', borderRadius: '0 0.5rem 0.5rem 0' }}>
                           <strong style={{ color: '#ef4444', fontSize: '0.8rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>⚠️ Risks</strong>
-                          <p style={{ margin: '0.5rem 0 0', color: 'var(--text-main)', lineHeight: 1.6 }}>{finalData.risks}</p>
+                          <p style={{ margin: '0.5rem 0 0', color: 'var(--text-main)', lineHeight: 1.6 }}>{safeStr(finalData.risks)}</p>
                         </div>
                       )}
                       {finalData.environment && (
                         <div style={{ marginBottom: '1rem', padding: '1rem', background: 'rgba(139,92,246,0.08)', borderLeft: '3px solid #8b5cf6', borderRadius: '0 0.5rem 0.5rem 0' }}>
                           <strong style={{ color: '#8b5cf6', fontSize: '0.8rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>🖥️ Environment</strong>
-                          <p style={{ margin: '0.5rem 0 0', color: 'var(--text-main)', lineHeight: 1.6 }}>{finalData.environment}</p>
+                          <p style={{ margin: '0.5rem 0 0', color: 'var(--text-main)', lineHeight: 1.6 }}>{safeStr(finalData.environment)}</p>
                         </div>
                       )}
 
@@ -585,10 +617,38 @@ function App() {
                 </div>
               )}
 
-              {!genStatus && (
-                <div className="status-box ">
-                   <h3>Awaiting Input</h3>
-                   <p>Complete Steps 1-3 to see dashboard results.</p>
+              {genStatus === '' && (
+                <div style={{ padding: '2.5rem 1rem', textAlign: 'center' }}>
+                  <span style={{ fontSize: '4rem', display: 'block', marginBottom: '1rem' }}>🚀</span>
+                  <h3 style={{ margin: '0 0 0.75rem', fontSize: '1.4rem', color: 'var(--text-main)' }}>Ready to Generate</h3>
+                  <p style={{ color: 'var(--text-sub)', marginBottom: '2rem', maxWidth: '400px', margin: '0 auto 2rem' }}>
+                    {!llmStatus || llmStatus !== 'success'
+                      ? 'Go to Step 1 to connect your LLM engine first.'
+                      : !almStatus || almStatus !== 'success'
+                      ? 'Go to Step 2 to connect Jira.'
+                      : !ticketId
+                      ? 'Go to Step 3 and enter a Jira ticket ID.'
+                      : 'All set! Click Generate Now above or use the button below.'}
+                  </p>
+                  <div style={{ display: 'flex', gap: '1rem', justifyContent: 'center', flexWrap: 'wrap' }}>
+                    {llmStatus === 'success' && almStatus === 'success' && ticketId ? (
+                      <button className="btn primary" style={{ minWidth: '200px', fontSize: '1rem' }} onClick={generatePlan}>
+                        🚀 Generate Test Plan
+                      </button>
+                    ) : (
+                      <>
+                        {(!llmStatus || llmStatus !== 'success') && (
+                          <button className="btn outline" style={{ minWidth: '160px' }} onClick={() => setCurrentStep(1)}>Step 1: Set LLM</button>
+                        )}
+                        {llmStatus === 'success' && (!almStatus || almStatus !== 'success') && (
+                          <button className="btn outline" style={{ minWidth: '160px' }} onClick={() => setCurrentStep(2)}>Step 2: Set Jira</button>
+                        )}
+                        {llmStatus === 'success' && almStatus === 'success' && !ticketId && (
+                          <button className="btn outline" style={{ minWidth: '160px' }} onClick={() => setCurrentStep(3)}>Step 3: Set Ticket</button>
+                        )}
+                      </>
+                    )}
+                  </div>
                 </div>
               )}
             </div>

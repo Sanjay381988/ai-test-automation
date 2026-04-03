@@ -1,0 +1,11 @@
+fastapi
+uvicorn[standard]
+jira
+python-docx
+docxtpl
+requests
+python-dotenv
+langchain
+langchain_community
+langchain_groq
+pydantic

@@ -1,0 +1,7 @@
+import sys
+import os
+
+# Add parent directory to path so we can import from main.py and tools
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from main import app  # Vercel Python runtime detects ASGI app named 'app'

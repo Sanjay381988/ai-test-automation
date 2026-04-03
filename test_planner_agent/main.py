@@ -15,6 +15,51 @@ app = FastAPI(title="AI Test Planner API")
 TMP_DIR = "/tmp" if os.name != "nt" else os.path.join(os.path.dirname(__file__), ".tmp")
 os.makedirs(TMP_DIR, exist_ok=True)
 
+def normalize_content(content: dict) -> dict:
+    """Normalize LLM output so all fields are plain strings / list-of-strings.
+    Prevents React 'Objects are not valid as a React child' crashes."""
+    # Normalize list fields
+    for field in ["test_scenarios"]:
+        val = content.get(field)
+        if val is None:
+            content[field] = []
+        elif isinstance(val, dict):
+            content[field] = [str(v) for v in val.values()]
+        elif isinstance(val, list):
+            normalized = []
+            for item in val:
+                if isinstance(item, str):
+                    normalized.append(item)
+                elif isinstance(item, dict):
+                    # Extract most meaningful string from dict
+                    text = (item.get("scenario") or item.get("name") or
+                            item.get("description") or item.get("title") or
+                            item.get("text") or item.get("step") or str(item))
+                    normalized.append(str(text))
+                else:
+                    normalized.append(str(item))
+            content[field] = normalized
+        elif isinstance(val, str):
+            # Split newline-separated strings into list
+            content[field] = [s.strip() for s in val.split('\n') if s.strip()]
+        else:
+            content[field] = [str(val)]
+
+    # Normalize scalar fields
+    for field in ["objective", "scope", "risks", "environment"]:
+        val = content.get(field)
+        if val is None:
+            content[field] = ""
+        elif isinstance(val, list):
+            content[field] = " ".join(str(v) for v in val)
+        elif isinstance(val, dict):
+            content[field] = "; ".join(f"{k}: {v}" for k, v in val.items())
+        elif not isinstance(val, str):
+            content[field] = str(val)
+
+    return content
+
+
 def generate_markdown_content(ticket_id: str, content: dict) -> str:
     md = f"# Test Plan: {ticket_id}\n\n"
     if content.get("objective"):
@@ -131,7 +176,10 @@ def api_generate(req: GeneratePlanRequest):
         content = generate_test_plan_content(ticket_data, llm_config, req.additional_context)
     if "error" in content:
         raise HTTPException(status_code=500, detail=f"LLM Error: {content['error']}")
-        
+
+    # Normalize LLM output to prevent frontend rendering crashes
+    content = normalize_content(content)
+
     # Write docx
     import os
     template_path = os.path.join(os.path.dirname(__file__), "resources", "Test Plan - Template.docx")
@@ -184,7 +232,10 @@ def api_preview(req: GeneratePlanRequest):
         
     if "error" in content:
         raise HTTPException(status_code=500, detail=f"LLM Error: {content['error']}")
-        
+
+    # Normalize LLM output to prevent frontend rendering crashes
+    content = normalize_content(content)
+
     html_preview = generate_confluence_html(req.ticket_id, content)
     
     # Save MD version for download
